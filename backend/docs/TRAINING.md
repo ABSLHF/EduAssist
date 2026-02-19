@@ -161,3 +161,27 @@ pip install -r requirements.txt
 - HF 分类模型训练后会在模型目录保存 `label_map.json`。
 - `POST /model/predict` 会优先把 `LABEL_70` 或 `70` 映射为可读标签。
 - 若映射缺失，返回兜底格式 `label_70`，避免前端出现纯数字标签。
+
+## 12. 教学评测对比（30题自动化）
+- 脚本：`scripts/eval_teaching_30.py`
+- 输入：`training/data/teaching_eval_30.csv`
+- 对比对象：
+  - `POST /qa`（RAG问答）
+  - `POST /model/qa_predict`（小模型抽取）
+- 输出：
+  - `docs/teaching_eval_report_*.json`
+  - `docs/teaching_eval_report_*.md`
+
+### 运行示例
+```powershell
+python scripts/eval_teaching_30.py --base-url http://127.0.0.1:8000 --course-id 10
+```
+
+### 常用参数
+- `--teacher-username` / `--teacher-password`：教师账号（用于 `qa_predict`）。
+- `--student-username` / `--student-password`：学生账号（用于 `/qa`）。
+- `--qa-model-path`：指定 QA 模型目录（可选，不填默认取最新成功模型）。
+- `--context-mode`：
+  - `retrieve`（默认）：调用本地检索得到片段作为 `qa_predict` 上下文（最贴近真实问答流程）。
+  - `global`：用整套题的问答对拼成上下文，适合快速联调，不建议用于最终指标。
+  - `gold`：每题仅用该题标准答案做上下文，适合上限测试。

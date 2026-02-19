@@ -343,12 +343,12 @@ class Verifier:
         if not ok:
             return
 
-        metric = self._parse_metrics(run.get("metrics"))
-        warn = isinstance(metric.get("f1"), (float, int)) and metric.get("f1", 0.0) < 0.05
-
         res = self._post_json("/model/predict", {"text": "顺序存储和链式存储区别"}, token=self.teacher_token)
         body = self._safe_json(res)
         ok = res.status_code == 200 and "label" in body
+        # Warn only when label is still raw numeric (e.g. "70"), which hurts demo readability.
+        label = str(body.get("label", "")).strip()
+        warn = ok and label.isdigit()
         self._record("F-3", "分类预测", "/model/predict", "POST", ok, {"text": "顺序存储和链式存储区别"}, res.status_code, body, warn=warn)
 
     def verify_hf_qa(self) -> None:

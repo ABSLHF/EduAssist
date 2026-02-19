@@ -52,7 +52,24 @@
 - 分类标签归一化：支持读取 `config.json` 与 `label_map.json`，将 `LABEL_x` 或数字标签映射成可读标签；无映射时返回 `label_x` 兜底格式。
 - 分类训练输出新增：模型目录自动写入 `label_map.json`，用于预测阶段标签解释。
 - 新增教学评测集：`training/data/teaching_eval_30.csv`（30题，含标准答案/知识点/难度）。
+- 自动化验收规则微调：`F-3` 仅在分类预测返回纯数字标签时标记 warn，便于聚焦“可演示可读性”目标。
+- 新增教学评测自动化脚本：`scripts/eval_teaching_30.py`，可批量对比 RAG 与 `qa_predict` 两条链路并生成报告。
 
 - 自动化验收执行（2026-02-19T17:05:52）：pass=15, warn=0, fail=1。 详情见 `docs/verification_report.md`。
 
 - 自动化验收执行（2026-02-19T17:33:25）：pass=19, warn=1, fail=0。 详情见 `docs/verification_report.md`。
+
+- 自动化验收执行（2026-02-19T18:19:48）：pass=19, warn=1, fail=0。 详情见 `docs/verification_report.md`。
+
+- 自动化验收执行（2026-02-19T18:46:45）：pass=20, warn=0, fail=0。 详情见 `docs/verification_report.md`。
+
+## RAG评测阶段进展（2026-02-20）
+- 30题检索评测（`context_mode=retrieve`, `hit_threshold=0.2`）：
+  - 2026-02-20 02:00:39：RAG `4/30 (0.1333)`，QA抽取 `1/30 (0.0333)`。
+  - 2026-02-20 02:10:39：RAG `10/30 (0.3333)`，QA抽取 `2/30 (0.0667)`。
+- 对照结论：
+  - `gold` 模式下 QA抽取可达 `30/30`，说明抽取模型能力可用。
+  - `retrieve` 模式提升明显但仍有空间，当前主要瓶颈在检索上下文质量。
+- 阶段判断：
+  - “教师上传资料 -> 检索答疑”主链路已形成可演示闭环。
+  - 下一步继续以“补充课程资料 + 低分题定向补料”为主，目标先将 RAG 命中率提升到 `0.40+`。

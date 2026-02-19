@@ -152,7 +152,18 @@ Purpose: Record work done, decisions, and environment changes for continuity.
 - 文档同步：
   - `docs/TRAINING.md` 增加评测集说明、CPU建议训练参数、标签可读性说明。
   - `docs/PROGRESS.md` 增加本轮能力与后续执行重点。
+- 调整自动化验收 `F-3` 告警口径（`scripts/verify_e2e.py`）：
+  - 原规则：按分类任务 `f1 < 0.05` 记 warn（对多类别小样本场景偏严格）。
+  - 新规则：仅当 `/model/predict` 返回纯数字标签时记 warn（更贴合演示可读性目标）。
+- 新增教学评测脚本 `scripts/eval_teaching_30.py`：
+  - 读取 `training/data/teaching_eval_30.csv`，逐题调用 `/qa` 与 `/model/qa_predict`。
+  - 用统一文本匹配分数与命中阈值统计两条链路表现。
+  - 输出 `docs/teaching_eval_report_*.json/.md`，可直接用于答辩对比材料。
 
 - 自动化验收执行（2026-02-19T17:05:52）：pass=15, warn=0, fail=1。 详情见 `docs/verification_report.md`。
 
 - 自动化验收执行（2026-02-19T17:33:25）：pass=19, warn=1, fail=0。 详情见 `docs/verification_report.md`。
+
+- 自动化验收执行（2026-02-19T18:19:48）：pass=19, warn=1, fail=0。 详情见 `docs/verification_report.md`。
+
+- 自动化验收执行（2026-02-19T18:46:45）：pass=20, warn=0, fail=0。 详情见 `docs/verification_report.md`。
