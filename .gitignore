@@ -1,0 +1,34 @@
+﻿# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+backend/.venv311/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config
+backend/.env
+
+# Local runtime artifacts
+backend/dev.db
+backend/uploads/
+backend/chroma/
+backend/chroma_data/
+backend/storage/
+backend/models/
+
+# Generated verification artifacts
+backend/docs/verification_report.json
+backend/docs/verification_report.md
+backend/docs/verify_material.txt

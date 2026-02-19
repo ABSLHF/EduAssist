@@ -1,0 +1,26 @@
+label,text
+fixed_point,Fixed-point notation keeps the radix point at a fixed location in machine representation.
+fixed_point,Fixed-point integers are efficient for pure integer arithmetic in limited word length.
+fixed_point,Fixed-point fractions place the radix point right after the sign bit.
+fixed_point,Fixed-point representation is simple but has limited numeric range.
+fixed_point,Two's complement fixed-point range depends on the total number of bits.
+floating_point,Floating-point notation uses exponent and mantissa so the radix point can move.
+floating_point,Floating-point numbers are good for representing very large and very small values.
+floating_point,In floating-point format the exponent controls scale and mantissa controls precision.
+floating_point,Normalized floating-point values improve precision in many operations.
+floating_point,Floating-point format trades hardware complexity for a larger representable range.
+storage_system,Computer storage hierarchy includes cache memory primary memory and secondary storage.
+storage_system,Cache reduces the speed gap between CPU and main memory by locality.
+storage_system,RAM is volatile memory while SSD and HDD are non-volatile storage devices.
+storage_system,Storage hierarchy balances capacity latency and cost.
+storage_system,Main memory and external storage cooperate to serve program data access.
+bus_structure,Bus structure is a shared communication path among hardware components.
+bus_structure,Address bus data bus and control bus are the three common system buses.
+bus_structure,Address bus is usually one-way while data bus is typically two-way.
+bus_structure,Buses support time-division sharing across multiple devices.
+bus_structure,Microcomputer hardware interconnection is commonly based on a bus architecture.
+controller,The controller fetches and decodes instructions then coordinates execution.
+controller,Program Counter holds the address of the next instruction.
+controller,Instruction Register stores the currently decoded instruction.
+controller,The controller generates control signals for ALU memory and IO operations.
+controller,Control unit handles sequencing and timing in the CPU.

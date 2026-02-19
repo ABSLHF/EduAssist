@@ -1,0 +1,15 @@
+from app.models.models import (
+    User,
+    Course,
+    UserCourse,
+    Material,
+    QARecord,
+    KnowledgePoint,
+    KnowledgeRelation,
+    KnowledgeEdge,
+    Assignment,
+    Submission,
+    SubmissionFeedback,
+    LearningEvent,
+    ModelRun,
+)
