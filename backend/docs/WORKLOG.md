@@ -167,3 +167,24 @@ Purpose: Record work done, decisions, and environment changes for continuity.
 - 自动化验收执行（2026-02-19T18:19:48）：pass=19, warn=1, fail=0。 详情见 `docs/verification_report.md`。
 
 - 自动化验收执行（2026-02-19T18:46:45）：pass=20, warn=0, fail=0。 详情见 `docs/verification_report.md`。
+
+## 2026-02-20
+- RAG 检索与 fallback 质量优化（面向 30 题教学评测）：
+  - `app/rag/pipeline.py`：
+    - 提高初始召回候选数量（`query_n`）；
+    - 增加单字核心词支持（如“树/栈/图/堆”）；
+    - 增加教学术语同义词扩展；
+    - 增加语义未命中时的全量词法兜底检索。
+  - `app/api/qa.py`：
+    - 优化问题关键词提取，过滤泛词；
+    - 过滤标题型噪声行；
+    - fallback 输出改为单句高相关答案，减少拼接噪声。
+  - `app/api/materials.py`：
+    - 资料上传成功后清理课程 QA 缓存，保证新资料立即生效。
+- 教学评测结果（`scripts/eval_teaching_30.py`, `course_id=17`, `context_mode=retrieve`, `hit_threshold=0.2`）：
+  - `docs/teaching_eval_report_20260220_020955.json`：RAG `10/30 (0.3333)`。
+  - `docs/teaching_eval_report_20260220_030903.json`：RAG `13/30 (0.4333)`。
+  - `docs/teaching_eval_report_20260220_031542.json`：RAG `17/30 (0.5667)`，平均分 `0.3759`。
+- 结论：
+  - “教师上传资料 -> 课程问答检索”主链路达到可演示与可复现状态；
+  - 后续重点从“基础可用”转向“低分题定向补料 + 多课程覆盖”。

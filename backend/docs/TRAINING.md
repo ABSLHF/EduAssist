@@ -185,3 +185,20 @@ python scripts/eval_teaching_30.py --base-url http://127.0.0.1:8000 --course-id 
   - `retrieve`（默认）：调用本地检索得到片段作为 `qa_predict` 上下文（最贴近真实问答流程）。
   - `global`：用整套题的问答对拼成上下文，适合快速联调，不建议用于最终指标。
   - `gold`：每题仅用该题标准答案做上下文，适合上限测试。
+
+## 13. RAG 检索优化结果（2026-02-20）
+- 目标：提升“教师上传资料后”的真实检索命中率（`context_mode=retrieve`）。
+- 代码改动：
+  - `app/rag/pipeline.py`：扩大召回候选、关键词与同义词重排、语义未命中时词法兜底。
+  - `app/api/qa.py`：问题关键词抽取增强、标题噪声行过滤、fallback 仅返回最相关一句。
+  - `app/api/materials.py`：上传成功后清理该课程 QA 缓存，避免旧答案污染评测。
+- 结果对比（同一评测集 `training/data/teaching_eval_30.csv`）：
+  - 基线：`10/30 (0.3333)`（2026-02-20 02:10:39）
+  - 优化后：`17/30 (0.5667)`（2026-02-20 03:16:47）
+  - 提升：`+0.2334`（+7 题）
+
+### 复现实验命令
+```powershell
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+python scripts/eval_teaching_30.py --base-url http://127.0.0.1:8000 --course-id 17 --context-mode retrieve --hit-threshold 0.2
+```

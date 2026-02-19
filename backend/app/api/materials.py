@@ -48,6 +48,10 @@ def upload_material(
             raise HTTPException(status_code=400, detail=material.parse_error)
 
         inserted = upsert_material(course_id, material.id, text)
+        # Invalidate cached QA answers so newly uploaded material takes effect immediately.
+        from app.api.qa import clear_qa_cache
+
+        clear_qa_cache(course_id)
         material.parse_status = "success"
         material.parse_error = None
         material.extracted_chars = extracted_chars
