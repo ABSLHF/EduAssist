@@ -255,7 +255,7 @@ class Verifier:
         payload = {
             "course_id": self.course_id,
             "title": "自动验收作业",
-            "description": "说明顺序存储与链式存储",
+            "description": "比较顺序存储与链式存储",
             "type": "text",
             "keywords": ["顺序存储", "链式存储"],
         }
@@ -266,54 +266,127 @@ class Verifier:
             self.assignment_id = int(body["id"])
         self._record("D-1", "教师发布作业", "/assignments/", "POST", ok, payload, res.status_code, body)
 
-        sub_payload = {"content": "顺序存储使用连续空间，链式存储通过指针连接。", "code": None}
+        first_payload = {
+            "content": "第一次提交：顺序存储使用连续空间，链式存储通过指针连接。",
+            "code": None,
+        }
         res = self.client.post(
             f"{self.base_url}/submissions/",
             headers={**self._headers(self.student_token), "Content-Type": "application/json"},
             params={"assignment_id": self.assignment_id},
-            json=sub_payload,
+            json=first_payload,
+        )
+        body = self._safe_json(res)
+        ok = res.status_code == 200 and "id" in body
+        first_submission_id = int(body["id"]) if ok else 0
+        self._record("D-2", "学生首次提交作业", "/submissions/", "POST", ok, first_payload, res.status_code, body)
+
+        second_payload = {
+            "content": "第二次提交：补充了两者在插入删除效率和随机访问能力上的差异。",
+            "code": None,
+        }
+        res = self.client.post(
+            f"{self.base_url}/submissions/",
+            headers={**self._headers(self.student_token), "Content-Type": "application/json"},
+            params={"assignment_id": self.assignment_id},
+            json=second_payload,
         )
         body = self._safe_json(res)
         ok = res.status_code == 200 and "id" in body
         if ok:
             self.submission_id = int(body["id"])
-        self._record("D-2", "学生提交作业", "/submissions/", "POST", ok, sub_payload, res.status_code, body)
+        self._record("D-3", "学生再次提交作业", "/submissions/", "POST", ok, second_payload, res.status_code, body)
+
+        res = self._get(
+            f"/submissions/me?course_id={self.course_id}&assignment_id={self.assignment_id}",
+            token=self.student_token,
+        )
+        body = self._safe_json(res)
+        latest_rows = []
+        if isinstance(body, list):
+            latest_rows = [row for row in body if row.get("latest")]
+        ok = (
+            res.status_code == 200
+            and isinstance(body, list)
+            and len(body) >= 2
+            and len(latest_rows) == 1
+            and int(latest_rows[0].get("id", 0)) == self.submission_id
+            and int(first_submission_id) > 0
+        )
+        self._record(
+            "D-4",
+            "学生查看我的提交记录（含最新标记）",
+            "/submissions/me",
+            "GET",
+            ok,
+            {"course_id": self.course_id, "assignment_id": self.assignment_id},
+            res.status_code,
+            body,
+        )
 
         res = self._get(f"/submissions/{self.submission_id}/feedback", token=self.student_token)
         body = self._safe_json(res)
         ok = res.status_code == 200 and "feedback" in body and "score" in body
-        self._record("D-3", "获取作业反馈", f"/submissions/{self.submission_id}/feedback", "GET", ok, None, res.status_code, body)
+        self._record("D-5", "获取作业反馈", f"/submissions/{self.submission_id}/feedback", "GET", ok, None, res.status_code, body)
 
     def verify_recommendation_and_kg(self) -> None:
         res = self._get(f"/recommendations/{self.course_id}", token=self.student_token)
         body = self._safe_json(res)
-        ok = res.status_code == 200 and "items" in body
-        warn = ok and len(body.get("items", [])) == 0
+        items = body.get("items") if isinstance(body, dict) else None
+        ok = (
+            res.status_code == 200
+            and isinstance(items, list)
+            and len(items) > 0
+            and all((item.get("knowledge_point") and item.get("reason")) for item in items if isinstance(item, dict))
+        )
         self._record(
             "E-1",
-            "学习推荐",
+            "学习推荐（非空且可解释）",
             f"/recommendations/{self.course_id}",
             "GET",
             ok,
             None,
             res.status_code,
             body,
-            warn=warn,
             severity_if_fail="blocker",
         )
 
         res = self.client.post(
             f"{self.base_url}/kg/{self.course_id}/candidates",
             headers=self._headers(self.teacher_token),
-            params={"material_id": self.material_id, "top_k": 5, "auto_create": True},
+            params={"material_id": self.material_id, "top_k": 5, "auto_create": True, "auto_link": True},
         )
         body = self._safe_json(res)
-        ok = res.status_code == 200 and "candidates" in body
-        self._record("E-2", f"/kg/{self.course_id}/candidates", f"/kg/{self.course_id}/candidates", "POST", ok, None, res.status_code, body)
+        created_edges = int(body.get("created_edges", 0) or 0) if isinstance(body, dict) else 0
+        ok = (
+            res.status_code == 200
+            and isinstance(body, dict)
+            and "candidates" in body
+            and "created_nodes" in body
+            and "created_edges" in body
+            and isinstance(body.get("created_edges"), int)
+        )
+        self._record(
+            "E-2",
+            "知识图谱候选构建（含自动建边）",
+            f"/kg/{self.course_id}/candidates",
+            "POST",
+            ok,
+            {"material_id": self.material_id, "top_k": 5, "auto_create": True, "auto_link": True},
+            res.status_code,
+            body,
+        )
 
         res = self._get(f"/kg/{self.course_id}", token=self.teacher_token)
         body = self._safe_json(res)
-        ok = res.status_code == 200 and "nodes" in body and "edges" in body
+        ok = (
+            res.status_code == 200
+            and isinstance(body, dict)
+            and isinstance(body.get("nodes"), list)
+            and isinstance(body.get("edges"), list)
+            and len(body.get("nodes", [])) > 0
+            and (created_edges == 0 or len(body.get("edges", [])) > 0)
+        )
         self._record("E-3", "获取知识图谱", f"/kg/{self.course_id}", "GET", ok, None, res.status_code, body)
 
     def verify_hf_cls(self) -> None:
@@ -508,3 +581,4 @@ def main() -> int:
 if __name__ == "__main__":
     os.environ.setdefault("PYTHONUTF8", "1")
     raise SystemExit(main())
+

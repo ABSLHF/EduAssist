@@ -36,6 +36,15 @@ class EvalRow:
     qa_hit: bool
 
 
+def safe_cell(row: dict[str, Any], key: str) -> str:
+    value = row.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.strip()
+
+
 def normalize_text(text: str) -> str:
     text = text.replace("[Fallback]", " ").replace("[SmallQA]", " ")
     text = re.sub(r"Reference:\s*chunk_[^\s]+", " ", text, flags=re.IGNORECASE)
@@ -80,14 +89,14 @@ def hit(score: float, threshold: float = 0.5) -> bool:
 def build_global_context(rows: list[dict[str, str]]) -> str:
     pairs: list[str] = []
     for r in rows:
-        q = r["question"].strip()
-        a = r["gold_answer"].strip()
+        q = safe_cell(r, "question")
+        a = safe_cell(r, "gold_answer")
         if q and a:
             pairs.append(f"Q: {q}\nA: {a}")
     return "\n\n".join(pairs)
 
 
-def build_retrieved_context(course_id: int, question: str, top_k: int = 3) -> str:
+def build_retrieved_context(course_id: int, question: str, top_k: int = 5) -> str:
     try:
         docs = retrieve(course_id, question, top_k=top_k)
     except EmbeddingModelUnavailable:
@@ -158,10 +167,14 @@ def main() -> int:
         student_headers = {"Authorization": f"Bearer {student_token}", "accept": "application/json"}
 
         for i, row in enumerate(rows, start=1):
-            q = row["question"].strip()
-            gold = row["gold_answer"].strip()
-            kp = row.get("knowledge_point", "").strip()
-            diff = row.get("difficulty", "").strip()
+            q = safe_cell(row, "question")
+            gold = safe_cell(row, "gold_answer")
+            kp = safe_cell(row, "knowledge_point")
+            diff = safe_cell(row, "difficulty")
+
+            if not q or not gold:
+                errors.append({"idx": i, "stage": "csv", "question": q, "error": "missing question or gold_answer"})
+                continue
 
             rag_answer = ""
             rag_mode = ""
@@ -187,7 +200,7 @@ def main() -> int:
                 if args.context_mode == "gold":
                     context = gold
                 elif args.context_mode == "retrieve":
-                    context = build_retrieved_context(args.course_id, q, top_k=3)
+                    context = build_retrieved_context(args.course_id, q, top_k=5)
                 else:
                     context = global_context
                 qa_predict_payload: dict[str, Any] = {"question": q, "context": context}

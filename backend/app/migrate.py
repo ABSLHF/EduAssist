@@ -21,6 +21,12 @@ def _ensure_compat_columns() -> None:
         _ensure_column("materials", "parse_error", "TEXT")
         _ensure_column("materials", "extracted_chars", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column("materials", "parsed_at", "DATETIME")
+    if "knowledge_relations" in tables:
+        _ensure_column("knowledge_relations", "material_id", "INTEGER")
+        _ensure_column("knowledge_relations", "cooccur_score", "FLOAT")
+        _ensure_column("knowledge_relations", "evidence_sentence", "TEXT")
+        _ensure_column("knowledge_relations", "is_weak", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column("knowledge_relations", "extractor", "VARCHAR(30)")
 
 
 def main() -> None:

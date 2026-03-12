@@ -1,12 +1,14 @@
 import json
 import threading
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_teacher
+from app.config import settings
 from app.db import get_db
 from app.models import models
 from app.schemas.schemas import (
@@ -17,8 +19,13 @@ from app.schemas.schemas import (
     QAPredictResponse,
 )
 from app.services.classifier import predict_label
+from app.services.model_paths import (
+    resolve_active_assignment_relevance_model_path,
+    resolve_active_qa_model_path,
+)
 from app.services.qa_small_model import predict_answer
 from training.train import train as run_training_local
+from training.train_assignment_relevance_hf import train as run_training_assignment_relevance_hf
 from training.train_cls_hf import train as run_training_cls_hf
 from training.train_qa_hf import train as run_training_qa_hf
 
@@ -28,6 +35,22 @@ router = APIRouter()
 class PredictRequest(BaseModel):
     text: str
     model_path: str | None = None
+
+
+class ActiveModelResponse(BaseModel):
+    qa_model_path: str | None
+    qa_model_source: str
+    enable_finetuned_qa_in_rag: bool
+    finetuned_qa_min_conf: float
+    finetuned_qa_top_chunks: int
+    finetuned_qa_max_evidence: int
+    qa_train_stage: str | None = None
+    qa_dataset_manifest: str | None = None
+    assignment_relevance_model_path: str | None = None
+    assignment_relevance_model_source: str = "none"
+    enable_assignment_relevance_model: bool = False
+    assignment_relevance_threshold_hi: float = 0.7
+    assignment_relevance_threshold_lo: float = 0.25
 
 
 def _timestamped_model_dir(prefix: str) -> str:
@@ -45,6 +68,38 @@ def _latest_model_path_by_task(db: Session, task_type: str) -> str | None:
     if not row:
         return None
     return row.model_path
+
+
+def _latest_qa_run_metrics(db: Session) -> dict:
+    row = (
+        db.query(models.ModelRun)
+        .filter(models.ModelRun.task_type == "qa_extractive_hf", models.ModelRun.status == "success")
+        .order_by(models.ModelRun.updated_at.desc())
+        .first()
+    )
+    if not row or not row.metrics:
+        return {}
+    try:
+        payload = json.loads(row.metrics)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _latest_assignment_relevance_metrics(db: Session) -> dict:
+    row = (
+        db.query(models.ModelRun)
+        .filter(models.ModelRun.task_type == "assignment_relevance_hf", models.ModelRun.status == "success")
+        .order_by(models.ModelRun.updated_at.desc())
+        .first()
+    )
+    if not row or not row.metrics:
+        return {}
+    try:
+        payload = json.loads(row.metrics)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _execute_training(payload: ModelTrainRequest) -> tuple[str, dict]:
@@ -77,9 +132,46 @@ def _execute_training(payload: ModelTrainRequest) -> tuple[str, dict]:
 
     if task_type == "qa_extractive_hf":
         model_name = payload.model_name or "bert-base-chinese"
+        dataset_name = payload.dataset_name or "cmrc2018"
+        if dataset_name == "edu_mix_qa_local":
+            stage_a_samples = payload.max_samples if payload.max_samples != 1200 else 8000
+            stage_b_samples = min(max(stage_a_samples // 4, 1200), 2000)
+            stage_batch = max(1, payload.batch_size // 4)
+            stage_a_path = _timestamped_model_dir("qa_stage_a")
+            stage_a_metrics = run_training_qa_hf(
+                dataset_name=dataset_name,
+                dataset_config=payload.dataset_config,
+                model_name=model_name,
+                output_dir=stage_a_path,
+                max_samples=stage_a_samples,
+                epochs=max(1, payload.epochs),
+                batch_size=stage_batch,
+                learning_rate=payload.learning_rate,
+                train_stage="A",
+            )
+            stage_b_path = _timestamped_model_dir("qa_stage_b")
+            stage_b_metrics = run_training_qa_hf(
+                dataset_name=dataset_name,
+                dataset_config=payload.dataset_config,
+                model_name=stage_a_path,
+                output_dir=stage_b_path,
+                max_samples=stage_b_samples,
+                epochs=1,
+                batch_size=stage_batch,
+                learning_rate=min(payload.learning_rate, 2e-5),
+                train_stage="B",
+            )
+            merged_metrics = {
+                **stage_b_metrics,
+                "pipeline": "two_stage_A_to_B",
+                "stage_a": stage_a_metrics,
+                "stage_b": stage_b_metrics,
+            }
+            return stage_b_path, merged_metrics
+
         model_path = _timestamped_model_dir("qa")
         metrics = run_training_qa_hf(
-            dataset_name=payload.dataset_name or "cmrc2018",
+            dataset_name=dataset_name,
             dataset_config=payload.dataset_config,
             model_name=model_name,
             output_dir=model_path,
@@ -87,8 +179,51 @@ def _execute_training(payload: ModelTrainRequest) -> tuple[str, dict]:
             epochs=payload.epochs,
             batch_size=max(1, payload.batch_size // 2),
             learning_rate=payload.learning_rate,
+            train_stage="A",
         )
         return model_path, metrics
+
+    if task_type == "assignment_relevance_hf":
+        model_name = payload.model_name or "hfl/chinese-roberta-wwm-ext"
+        dataset_name = payload.dataset_name or "assignment_relevance_mix_local"
+
+        stage_a_samples = payload.max_samples if payload.max_samples != 1200 else 24000
+        stage_b_samples = min(max(stage_a_samples // 2, 6000), stage_a_samples)
+        stage_a_epochs = payload.epochs if payload.epochs > 1 else 3
+        stage_b_epochs = max(1, payload.epochs - 1) if payload.epochs > 1 else 2
+        stage_batch = max(8, payload.batch_size)
+
+        stage_a_path = _timestamped_model_dir("assignment_rel_stage_a")
+        stage_a_metrics = run_training_assignment_relevance_hf(
+            dataset_name=dataset_name,
+            dataset_config=payload.dataset_config,
+            model_name=model_name,
+            output_dir=stage_a_path,
+            max_samples=stage_a_samples,
+            epochs=stage_a_epochs,
+            batch_size=stage_batch,
+            learning_rate=payload.learning_rate,
+            train_stage="A",
+        )
+        stage_b_path = _timestamped_model_dir("assignment_rel_stage_b")
+        stage_b_metrics = run_training_assignment_relevance_hf(
+            dataset_name=dataset_name,
+            dataset_config=payload.dataset_config,
+            model_name=stage_a_path,
+            output_dir=stage_b_path,
+            max_samples=stage_b_samples,
+            epochs=stage_b_epochs,
+            batch_size=stage_batch,
+            learning_rate=min(payload.learning_rate, 2e-5),
+            train_stage="B",
+        )
+        merged_metrics = {
+            **stage_b_metrics,
+            "pipeline": "two_stage_A_to_B",
+            "stage_a": stage_a_metrics,
+            "stage_b": stage_b_metrics,
+        }
+        return stage_b_path, merged_metrics
 
     raise ValueError(f"Unsupported task_type: {task_type}")
 
@@ -169,3 +304,43 @@ def get_training_job(job_id: int, db: Session = Depends(get_db), user=Depends(ge
     if not run:
         raise HTTPException(status_code=404, detail="Job not found")
     return run
+
+
+@router.get("/active", response_model=ActiveModelResponse, summary="当前生效微调模型")
+def get_active_model(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    qa_model_path, qa_model_source = resolve_active_qa_model_path(db)
+    latest_metrics = _latest_qa_run_metrics(db)
+    assignment_model_path, assignment_model_source = resolve_active_assignment_relevance_model_path(db)
+    latest_assignment_metrics = _latest_assignment_relevance_metrics(db)
+    manifest_hint = None
+    dataset_name = str(latest_metrics.get("dataset", ""))
+    dataset_config = str(latest_metrics.get("dataset_config", "") or "")
+    if dataset_name.startswith("local_jsonl:"):
+        base_dir = Path(dataset_name.replace("local_jsonl:", "", 1).strip())
+        manifest_hint = str((base_dir / "manifest.json"))
+    elif dataset_config:
+        cfg_path = Path(dataset_config).expanduser()
+        manifest_hint = str((cfg_path / "manifest.json")) if cfg_path.suffix == "" else str(cfg_path)
+
+    assignment_threshold_hi = float(
+        latest_assignment_metrics.get("threshold_hi", settings.assignment_relevance_threshold_hi)
+    )
+    assignment_threshold_lo = float(
+        latest_assignment_metrics.get("threshold_lo", settings.assignment_relevance_threshold_lo)
+    )
+
+    return {
+        "qa_model_path": qa_model_path,
+        "qa_model_source": qa_model_source,
+        "enable_finetuned_qa_in_rag": settings.enable_finetuned_qa_in_rag,
+        "finetuned_qa_min_conf": settings.finetuned_qa_min_conf,
+        "finetuned_qa_top_chunks": settings.finetuned_qa_top_chunks,
+        "finetuned_qa_max_evidence": settings.finetuned_qa_max_evidence,
+        "qa_train_stage": latest_metrics.get("train_stage"),
+        "qa_dataset_manifest": manifest_hint,
+        "assignment_relevance_model_path": assignment_model_path,
+        "assignment_relevance_model_source": assignment_model_source,
+        "enable_assignment_relevance_model": settings.enable_assignment_relevance_model,
+        "assignment_relevance_threshold_hi": assignment_threshold_hi,
+        "assignment_relevance_threshold_lo": assignment_threshold_lo,
+    }

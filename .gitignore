@@ -27,8 +27,27 @@ backend/chroma/
 backend/chroma_data/
 backend/storage/
 backend/models/
+chroma/
+backend/chroma_alt/
+backend/chroma_test_temp/
+backend/backend/
+backend/wheels/
+backend/.run_backend*.log
+backend/app/llm/*.pyc.tmp.*
+.piptmp/
+backend/.piptmp/
+tmp_docs/
+tmp_upload_test/
+tmp_frontend_demo_doc.txt
+backend_upload.tar.gz
 
 # Generated verification artifacts
 backend/docs/verification_report.json
 backend/docs/verification_report.md
 backend/docs/verify_material.txt
+
+# Large local training artifacts
+backend/training/data/_*/
+backend/training/data/*.tar.gz
+backend/training/data/*.zip
+backend/training/data/ms_open_data_list.txt

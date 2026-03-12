@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint, Float
 from sqlalchemy.orm import relationship
 from app.db import Base
 
@@ -92,6 +92,11 @@ class KnowledgeRelation(Base):
     source_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=False)
     target_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=False)
     relation = Column(String(50), default="relates_to")
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=True)
+    cooccur_score = Column(Float, nullable=True)
+    evidence_sentence = Column(Text, nullable=True)
+    is_weak = Column(Integer, nullable=False, default=0)
+    extractor = Column(String(30), nullable=True)
 
 
 class KnowledgeEdge(Base):
@@ -102,6 +107,26 @@ class KnowledgeEdge(Base):
     source_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=False)
     target_id = Column(Integer, ForeignKey("knowledge_points.id"), nullable=False)
     relation = Column(String(50), default="relates_to")
+
+
+class KnowledgeCandidate(Base):
+    __tablename__ = "knowledge_candidates"
+    __table_args__ = (
+        UniqueConstraint("course_id", "material_id", "term_norm", name="uq_kg_candidate_material_term"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=False)
+    term = Column(String(120), nullable=False)
+    term_norm = Column(String(120), nullable=False)
+    source_sentence = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")  # pending|approved|rejected
+    extractor = Column(String(30), nullable=False, default="hybrid")
+    fallback_used = Column(Integer, nullable=False, default=0)
+    score = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Assignment(Base):

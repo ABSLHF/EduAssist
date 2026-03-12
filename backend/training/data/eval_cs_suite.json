@@ -1,0 +1,26 @@
+{
+  "name": "cs_core_120",
+  "description": "高校CS通用评测集（4门核心课，每门30题）",
+  "sets": [
+    {
+      "course_name": "数据结构",
+      "course_id": 8,
+      "csv_path": "training/data/eval_cs_data_structure_30.csv"
+    },
+    {
+      "course_name": "数据库系统",
+      "course_id": 9,
+      "csv_path": "training/data/eval_cs_database_30.csv"
+    },
+    {
+      "course_name": "操作系统",
+      "course_id": 10,
+      "csv_path": "training/data/eval_cs_os_30.csv"
+    },
+    {
+      "course_name": "计算机网络",
+      "course_id": 11,
+      "csv_path": "training/data/eval_cs_network_30.csv"
+    }
+  ]
+}

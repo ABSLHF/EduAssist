@@ -16,6 +16,7 @@
 - `POST /materials?course_id=&title=` 教师上传资料
   - 返回：`material_id`、`chunks`、`parse_status`、`parse_error`、`extracted_chars`
 - `POST /qa` 课程问答
+  - 请求可选：`history`（多轮对话历史，role/content）
   - 返回：`answer`、`source_type`、`mode`、`references`
 
 ## 作业接口
