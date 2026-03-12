@@ -139,16 +139,24 @@ def main():
     source_counts: dict[str, dict[str, int]] = {}
 
     if args.include_ocnli:
-        ocnli_train, ocnli_val = _load_ocnli(max_train=args.ocnli_max_train, max_val=args.ocnli_max_val)
-        train_rows.extend(ocnli_train)
-        val_rows.extend(ocnli_val)
-        source_counts["ocnli"] = {"train": len(ocnli_train), "validation": len(ocnli_val)}
+        try:
+            ocnli_train, ocnli_val = _load_ocnli(max_train=args.ocnli_max_train, max_val=args.ocnli_max_val)
+            train_rows.extend(ocnli_train)
+            val_rows.extend(ocnli_val)
+            source_counts["ocnli"] = {"train": len(ocnli_train), "validation": len(ocnli_val)}
+        except Exception as exc:
+            source_counts["ocnli_error"] = {"train": 0, "validation": 0}
+            print(f"[WARN] skip ocnli due to error: {exc}")
 
     if args.include_lcqmc:
-        lcqmc_train, lcqmc_val = _load_lcqmc(max_train=args.lcqmc_max_train, max_val=args.lcqmc_max_val)
-        train_rows.extend(lcqmc_train)
-        val_rows.extend(lcqmc_val)
-        source_counts["lcqmc"] = {"train": len(lcqmc_train), "validation": len(lcqmc_val)}
+        try:
+            lcqmc_train, lcqmc_val = _load_lcqmc(max_train=args.lcqmc_max_train, max_val=args.lcqmc_max_val)
+            train_rows.extend(lcqmc_train)
+            val_rows.extend(lcqmc_val)
+            source_counts["lcqmc"] = {"train": len(lcqmc_train), "validation": len(lcqmc_val)}
+        except Exception as exc:
+            source_counts["lcqmc_error"] = {"train": 0, "validation": 0}
+            print(f"[WARN] skip lcqmc due to error: {exc}")
 
     local_train_path = Path(args.local_train).expanduser() if args.local_train else None
     local_val_path = Path(args.local_validation).expanduser() if args.local_validation else None
@@ -174,6 +182,11 @@ def main():
 
     random.shuffle(train_rows)
     random.shuffle(val_rows)
+    if not train_rows:
+        raise RuntimeError(
+            "No training samples were built. "
+            "Please provide --local-train data, or fix remote dataset download, then retry."
+        )
     if not val_rows and train_rows:
         split_idx = max(1, int(len(train_rows) * (1.0 - args.val_ratio)))
         val_rows = train_rows[split_idx:]
