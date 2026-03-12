@@ -329,14 +329,20 @@ def train(
             "precision_off_topic": precision_off_topic,
         }
 
-    trainer = Trainer(
-        model=model,
-        args=args,
-        train_dataset=train_tok,
-        eval_dataset=eval_tok,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
-    )
+    trainer_kwargs = {
+        "model": model,
+        "args": args,
+        "train_dataset": train_tok,
+        "eval_dataset": eval_tok,
+        "compute_metrics": compute_metrics,
+    }
+    trainer_params = set(inspect.signature(Trainer.__init__).parameters.keys())
+    if "tokenizer" in trainer_params:
+        trainer_kwargs["tokenizer"] = tokenizer
+    elif "processing_class" in trainer_params:
+        trainer_kwargs["processing_class"] = tokenizer
+
+    trainer = Trainer(**trainer_kwargs)
     trainer.train()
 
     eval_pred = trainer.predict(eval_tok)
