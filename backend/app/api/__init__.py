@@ -1,1 +1,5 @@
-from app.api import auth, courses, materials, qa, kg, assignments, recommendations, model, submissions
+"""API package.
+
+Keep this module side-effect free.
+Do not eagerly import all routers here; it can trigger heavy model initialization.
+"""
