@@ -57,6 +57,18 @@ python scripts/run_assignment_relevance_autodl.py \
 
 如果你已经提前构建好数据，可加 `--skip-build`。
 
+## 3.1 启动训练服务（推荐轻量入口）
+如果完整服务 `uvicorn app.main:app` 在 AutoDL 上被系统杀进程，可改用轻量入口：
+
+```bash
+python -m app.migrate
+uvicorn app.main_train:app --host 0.0.0.0 --port 8000
+```
+
+说明：
+- `python app/migrate.py` 可能报 `ModuleNotFoundError: app`，请使用 `python -m app.migrate`。
+- `main_train` 只加载 `auth + model` 路由，足够用于登录、触发训练和查询训练状态。
+
 ## 4. 训练接口（手动方式）
 如果不用一键脚本，可直接调用接口：
 
