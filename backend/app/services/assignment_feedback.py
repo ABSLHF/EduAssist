@@ -139,6 +139,18 @@ _AMBIG_LABEL_RE = re.compile(r'"label"\s*:\s*"(relevant|off_topic)"', re.IGNOREC
 _SCORE_LINE_RE = re.compile(r"^(?:评分|得分|score)\s*[:：]\s*\d{1,3}\s*$", re.IGNORECASE)
 _SCORE_INLINE_RE = re.compile(r"(?:评分|得分|score)\s*[:：]\s*\d{1,3}", re.IGNORECASE)
 _FEEDBACK_PREFIX_RE = re.compile(r"^(?:评语|反馈)\s*[:：]\s*", re.IGNORECASE)
+_MARKDOWN_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s*")
+_MARKDOWN_BULLET_RE = re.compile(r"^\s*[-*+]\s+")
+_SECTION_HEADER_RE = re.compile(r"(优点：|问题：|改进建议：)")
+_OVER_SCOPE_HINTS = (
+    "时间复杂度",
+    "空间复杂度",
+    "应用场景",
+    "优缺点",
+    "选择标准",
+    "复杂度分析",
+    "比较分析",
+)
 
 
 def _normalize_text(text: str) -> str:
@@ -414,16 +426,66 @@ def parse_llm_feedback(response: str) -> str:
         line = raw.strip()
         if not line:
             continue
+        if line.startswith("```"):
+            continue
+        line = _MARKDOWN_HEADING_RE.sub("", line)
+        line = _MARKDOWN_BULLET_RE.sub("", line)
+        line = line.replace("**", "").replace("__", "").replace("`", "")
         if _SCORE_LINE_RE.search(line):
             continue
         line = _SCORE_INLINE_RE.sub("", line).strip()
+        line = line.replace("作业批改评语", "").strip()
         line = _FEEDBACK_PREFIX_RE.sub("", line)
         if line:
             lines.append(line)
 
     cleaned = "\n".join(lines).strip()
     cleaned = _SCORE_INLINE_RE.sub("", cleaned).strip()
-    return _FEEDBACK_PREFIX_RE.sub("", cleaned).strip()
+    cleaned = _FEEDBACK_PREFIX_RE.sub("", cleaned).strip()
+    cleaned = _SECTION_HEADER_RE.sub(r"\n\1", cleaned).strip()
+    cleaned = re.sub(r"\n{2,}", "\n", cleaned)
+    if cleaned.startswith("："):
+        cleaned = cleaned[1:].strip()
+    return cleaned
+
+
+def _scope_has_requirement(assignment: AssignmentLike, hint: str) -> bool:
+    scope_text = " ".join(
+        [
+            (assignment.title or "").lower(),
+            (assignment.description or "").lower(),
+            (assignment.keywords or "").lower(),
+        ]
+    )
+    return hint.lower() in scope_text
+
+
+def _enforce_feedback_scope(assignment: AssignmentLike, feedback: str, structured: StructuredGrading) -> str:
+    lines = [line.strip() for line in (feedback or "").splitlines() if line.strip()]
+    if not lines:
+        return feedback
+
+    drop_hints = [hint for hint in _OVER_SCOPE_HINTS if (hint in feedback and not _scope_has_requirement(assignment, hint))]
+    if not drop_hints:
+        return feedback
+
+    kept_lines: list[str] = []
+    for line in lines:
+        if line.startswith("问题：") or line.startswith("改进建议："):
+            if any(h in line for h in drop_hints):
+                continue
+        kept_lines.append(line)
+
+    if not any(x.startswith("问题：") for x in kept_lines):
+        issue = "；".join(structured.issues[:1]) or "答案与题干要求对齐还不够充分。"
+        kept_lines.append(f"问题：{issue}")
+    if not any(x.startswith("改进建议：") for x in kept_lines):
+        suggestion = "；".join(structured.suggestions[:2]) or "围绕题干要求补充核心定义与关键要点。"
+        kept_lines.append(f"改进建议：{suggestion}")
+
+    normalized = "\n".join(kept_lines)
+    normalized = re.sub(r"\n{2,}", "\n", normalized).strip()
+    return normalized
 
 
 def _mode() -> str:
@@ -752,6 +814,7 @@ def _build_v2_prompt(
         "问题：\n"
         "改进建议：\n"
         "禁止输出评分、分数、得分、百分比。\n"
+        "问题与建议必须严格围绕题干显式要求，不能额外引入未要求维度（例如复杂度比较、应用场景扩展）。\n"
         "改进建议至少2条，且可执行。\n"
         f"题目：{assignment.title}\n"
         f"描述：{assignment.description or '无'}\n"
@@ -790,6 +853,7 @@ async def _generate_v2_feedback(
     feedback = parse_llm_feedback(llm_output)
     if not feedback:
         feedback = _fallback_v2_feedback(relevance, structured)
+    feedback = _enforce_feedback_scope(assignment, feedback, structured)
 
     if structured.risk_hint and structured.risk_hint not in feedback:
         if "问题：" in feedback:

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 import json
@@ -61,6 +61,15 @@ class AssignmentFeedbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("评分", cleaned)
         self.assertIn("回答基本正确", cleaned)
 
+    def test_parse_llm_feedback_strips_markdown(self):
+        raw = "### 作业批改评语\n**优点：**内容完整\n**问题：**缺少定义\n**改进建议：**补充概念"
+        cleaned = parse_llm_feedback(raw)
+        self.assertNotIn("###", cleaned)
+        self.assertNotIn("**", cleaned)
+        self.assertIn("优点：", cleaned)
+        self.assertIn("问题：", cleaned)
+        self.assertIn("改进建议：", cleaned)
+
     async def test_v2_fallback_has_three_sections_and_no_score(self):
         assignment = DummyAssignment(
             title="作业1",
@@ -83,6 +92,37 @@ class AssignmentFeedbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("改进建议：", feedback)
         self.assertNotIn("评分", feedback)
         self.assertNotIn("得分", feedback)
+
+    async def test_v2_feedback_should_respect_assignment_scope(self):
+        assignment = DummyAssignment(
+            title="数据结构test1，作业1",
+            description="数据结构有哪些？",
+            keywords="数组,链表,栈,队列",
+            course_id=1,
+        )
+
+        async def fake_llm(_prompt: str) -> str:
+            return (
+                "###作业批改评语\n"
+                "**优点：**列举了常见数据结构。\n"
+                "**问题：**缺少时间复杂度和空间复杂度分析。\n"
+                "**改进建议：**补充应用场景和优缺点比较。"
+            )
+
+        with patch("app.services.assignment_feedback.settings.assignment_feedback_mode", "v2"), patch(
+            "app.services.assignment_feedback.retrieve",
+            return_value=[],
+        ):
+            feedback = await generate_text_assignment_feedback(assignment, "数组、链表、栈、队列", fake_llm)
+
+        self.assertNotIn("###", feedback)
+        self.assertNotIn("**", feedback)
+        self.assertNotIn("时间复杂度", feedback)
+        self.assertNotIn("空间复杂度", feedback)
+        self.assertNotIn("应用场景", feedback)
+        self.assertIn("优点：", feedback)
+        self.assertIn("问题：", feedback)
+        self.assertIn("改进建议：", feedback)
 
     async def test_shadow_mode_returns_legacy_and_writes_log(self):
         assignment = DummyAssignment(
