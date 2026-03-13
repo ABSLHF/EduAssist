@@ -1,48 +1,73 @@
-# 作业批改与评语链路（阶段1 + 阶段2）
+﻿# 作业评语单链路（single_v2）说明
 
-## 1. 阶段1（已接入）
+## 1. 运行链路
 
-当前新增了三种运行模式（环境变量）：
+当前评语链路固定为：
+
+1. 诊断层：规则定档（invalid / off_topic / partial / good）
+2. 生成层：本地SFT模型生成评语草稿（可回退外部LLM）
+3. 约束层：清洗评分/Markdown/越界建议，输出稳定格式
+
+说明：
+- 不再要求所有回答都必须三段式。
+- 对 invalid/off_topic 默认只输出：`问题 + 改进建议`。
+- 题干未要求时，禁止把“复杂度/应用场景/比较分析”当作必改项。
+
+## 2. 配置项（.env）
 
 ```dotenv
-ASSIGNMENT_FEEDBACK_MODE=legacy   # legacy|shadow|v2
-ASSIGNMENT_FEEDBACK_SHADOW_LOG_PATH=logs/assignment_feedback_shadow.jsonl
-ENABLE_ASSIGNMENT_FEEDBACK_MODEL=false
-ASSIGNMENT_FEEDBACK_MODEL_PATH=
+ASSIGNMENT_FEEDBACK_PIPELINE_VERSION=single_v2
+ENABLE_ASSIGNMENT_FEEDBACK_SFT_MODEL=false
+ASSIGNMENT_FEEDBACK_SFT_MODEL_PATH=
+ASSIGNMENT_FEEDBACK_EXTERNAL_FALLBACK=true
+ASSIGNMENT_FEEDBACK_SFT_MAX_NEW_TOKENS=220
+ASSIGNMENT_FEEDBACK_SFT_TEMPERATURE=0.2
+ASSIGNMENT_FEEDBACK_SFT_TOP_P=0.9
 ```
 
-- `legacy`：保持旧链路（先相关性判定，再生成评语）。
-- `shadow`：线上返回旧评语，同时后台生成新版评语并写 JSONL 对比日志。
-- `v2`：启用新版链路（证据检索 + 结构化批改 + 评语生成）。
-- `ENABLE_ASSIGNMENT_FEEDBACK_MODEL` / `ASSIGNMENT_FEEDBACK_MODEL_PATH`：阶段2模型接入预留开关，当前默认关闭。
+建议首版：
+- 本地模型未就绪时，保持 `ENABLE_ASSIGNMENT_FEEDBACK_SFT_MODEL=false`，并打开外部兜底。
+- 本地模型训练完成后，设置 `ENABLE_ASSIGNMENT_FEEDBACK_SFT_MODEL=true` 并填入模型路径。
 
-新版链路核心：
-1. 证据检索：按 `course_id + 题干 + 学生答案` 检索课程资料片段（top_k=4）。
-2. 结构化批改：输出 4 维中间结果（概念正确性、要点覆盖、术语准确性、表达清晰度）。
-3. 评语生成：要求固定三段 `优点/问题/改进建议`，且禁止输出分数。
-4. 失败兜底：LLM失败时返回规则模板评语，不中断提交。
-
-## 2. 阶段2（数据与训练）
-
-新增数据脚本：
+## 3. 训练数据构建（SFT）
 
 ```bash
-python training/build_assignment_feedback_mix.py \
-  --out-dir training/data/assignment_feedback_mix \
+python training/build_assignment_feedback_sft_mix.py \
+  --out-dir training/data/assignment_feedback_sft_mix \
   --include-scientsbank \
   --include-beetle \
+  --from-feedback-mix training/data/assignment_feedback_mix
+```
+
+如有本地教师样本，可叠加：
+
+```bash
+python training/build_assignment_feedback_sft_mix.py \
+  --out-dir training/data/assignment_feedback_sft_mix \
+  --include-scientsbank \
+  --include-beetle \
+  --from-feedback-mix training/data/assignment_feedback_mix \
   --local-train training/data/assignment_feedback_local/train.jsonl \
   --local-validation training/data/assignment_feedback_local/validation.jsonl
 ```
 
-输出统一字段：
-- `question`
-- `reference_answer`
-- `student_answer`
-- `rubric_labels`（含 `raw_label` 和 `relevance`）
-- `teacher_feedback`
-- `source`
+## 4. SFT训练（Qwen2.5-7B-Instruct + QLoRA）
 
-后续可用于：
-- 判定模型（多头分类/多标签）
-- 评语生成模型（如 QLoRA）
+训练任务类型：`assignment_feedback_sft_hf`
+
+可通过训练API触发，或在脚本中直接调用 `training/train_assignment_feedback_sft_hf.py`。
+
+依赖（AutoDL）：
+
+```bash
+pip install peft bitsandbytes
+```
+
+## 5. 离线对比评估
+
+使用脚本：`backend/scripts/eval_assignment_feedback_shadow.py`
+
+用途：
+- 对比“直接LLM评语”与“single_v2链路评语”
+- 输出误判率、越界建议率、时延和样例
+

@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     assignment_feedback_shadow_log_path: str = "logs/assignment_feedback_shadow.jsonl"
     enable_assignment_feedback_model: bool = False
     assignment_feedback_model_path: str | None = None
+    assignment_feedback_pipeline_version: str = "single_v2"
+    enable_assignment_feedback_sft_model: bool = False
+    assignment_feedback_sft_model_path: str | None = None
+    assignment_feedback_external_fallback: bool = True
+    assignment_feedback_sft_max_new_tokens: int = 220
+    assignment_feedback_sft_temperature: float = 0.2
+    assignment_feedback_sft_top_p: float = 0.9
     kg_extractor: str = "hybrid"
     kg_top_k: int = 12
     kg_min_term_len: int = 2

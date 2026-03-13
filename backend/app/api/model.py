@@ -21,12 +21,14 @@ from app.schemas.schemas import (
 from app.services.classifier import predict_label
 from app.services.model_paths import (
     resolve_active_assignment_feedback_model_path,
+    resolve_active_assignment_feedback_sft_model_path,
     resolve_active_assignment_relevance_model_path,
     resolve_active_qa_model_path,
 )
 from app.services.qa_small_model import predict_answer
 from training.train import train as run_training_local
 from training.train_assignment_feedback_hf import train as run_training_assignment_feedback_hf
+from training.train_assignment_feedback_sft_hf import train as run_training_assignment_feedback_sft_hf
 from training.train_assignment_relevance_hf import train as run_training_assignment_relevance_hf
 from training.train_cls_hf import train as run_training_cls_hf
 from training.train_qa_hf import train as run_training_qa_hf
@@ -56,6 +58,10 @@ class ActiveModelResponse(BaseModel):
     assignment_feedback_model_path: str | None = None
     assignment_feedback_model_source: str = "none"
     enable_assignment_feedback_model: bool = False
+    assignment_feedback_sft_model_path: str | None = None
+    assignment_feedback_sft_model_source: str = "none"
+    enable_assignment_feedback_sft_model: bool = False
+    assignment_feedback_pipeline_version: str = "single_v2"
 
 
 def _timestamped_model_dir(prefix: str) -> str:
@@ -246,6 +252,22 @@ def _execute_training(payload: ModelTrainRequest) -> tuple[str, dict]:
         )
         return model_path, metrics
 
+    if task_type == "assignment_feedback_sft_hf":
+        model_name = payload.model_name or "Qwen/Qwen2.5-7B-Instruct"
+        dataset_name = payload.dataset_name or "assignment_feedback_sft_mix"
+        model_path = _timestamped_model_dir("assignment_feedback_sft")
+        metrics = run_training_assignment_feedback_sft_hf(
+            dataset_name=dataset_name,
+            dataset_config=payload.dataset_config,
+            model_name=model_name,
+            output_dir=model_path,
+            max_samples=payload.max_samples,
+            epochs=max(1, payload.epochs),
+            batch_size=max(1, payload.batch_size),
+            learning_rate=payload.learning_rate,
+        )
+        return model_path, metrics
+
     raise ValueError(f"Unsupported task_type: {task_type}")
 
 
@@ -333,6 +355,9 @@ def get_active_model(db: Session = Depends(get_db), user=Depends(get_current_use
     latest_metrics = _latest_qa_run_metrics(db)
     assignment_model_path, assignment_model_source = resolve_active_assignment_relevance_model_path(db)
     assignment_feedback_model_path, assignment_feedback_model_source = resolve_active_assignment_feedback_model_path(db)
+    assignment_feedback_sft_model_path, assignment_feedback_sft_model_source = resolve_active_assignment_feedback_sft_model_path(
+        db
+    )
     latest_assignment_metrics = _latest_assignment_relevance_metrics(db)
     manifest_hint = None
     dataset_name = str(latest_metrics.get("dataset", ""))
@@ -368,4 +393,8 @@ def get_active_model(db: Session = Depends(get_db), user=Depends(get_current_use
         "assignment_feedback_model_path": assignment_feedback_model_path,
         "assignment_feedback_model_source": assignment_feedback_model_source,
         "enable_assignment_feedback_model": settings.enable_assignment_feedback_model,
+        "assignment_feedback_sft_model_path": assignment_feedback_sft_model_path,
+        "assignment_feedback_sft_model_source": assignment_feedback_sft_model_source,
+        "enable_assignment_feedback_sft_model": settings.enable_assignment_feedback_sft_model,
+        "assignment_feedback_pipeline_version": settings.assignment_feedback_pipeline_version,
     }
