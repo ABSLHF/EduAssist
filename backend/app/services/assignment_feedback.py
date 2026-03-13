@@ -79,6 +79,10 @@ _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{1,12}|[A-Za-z]{2,24}|[A-Za-z]+[0-9]+")
 _TOKEN_CLEAN_RE = re.compile(r"^[\W_]+|[\W_]+$")
 _KEYWORD_SPLIT_RE = re.compile(r"[,，、;；\s\n\r\t]+")
 _GENERIC_TITLE_RE = re.compile(r"^(?:作业|练习|任务|实验)\s*[0-9一二三四五六七八九十]+$", re.IGNORECASE)
+_TITLE_NOISE_TOKEN_RE = re.compile(
+    r"^(?:test|hw|lab|task|lesson|unit|week|chapter)[_-]?\d+$|^(?:作业|练习|实验|任务|第?[0-9一二三四五六七八九十]+次?)$",
+    re.IGNORECASE,
+)
 _QUESTION_PATTERNS = (
     re.compile(r"(?:什么是|何为|请解释|解释|简述|定义|说明)\s*([A-Za-z0-9\u4e00-\u9fff]{1,20})"),
     re.compile(r"([A-Za-z0-9\u4e00-\u9fff]{1,20})\s*(?:是什么|的定义|指的是什么)"),
@@ -151,7 +155,13 @@ def _clean_term(token: str) -> str:
 def _is_noise_term(term: str) -> bool:
     if not term:
         return True
+    if term in {"ipv4", "ipv6"}:
+        return False
     if term in _STOPWORDS or term in _QUESTION_WORDS:
+        return True
+    if _TITLE_NOISE_TOKEN_RE.fullmatch(term):
+        return True
+    if re.fullmatch(r"[a-z]{2,8}\d{1,3}", term, flags=re.IGNORECASE):
         return True
     if term.isdigit():
         return True
@@ -302,7 +312,9 @@ def _build_assignment_query_text(assignment: AssignmentLike) -> str:
     if kw:
         parts.append(f"关键词：{kw}")
     if title and not _GENERIC_TITLE_RE.fullmatch(title):
-        parts.append(f"标题：{title}")
+        title_terms = [t for t in _tokenize_terms(title) if not _TITLE_NOISE_TOKEN_RE.fullmatch(t)]
+        if title_terms:
+            parts.append(f"标题：{'、'.join(title_terms[:6])}")
     if not parts and title:
         parts.append(title)
     return "\n".join(parts)
@@ -628,8 +640,10 @@ def _apply_feedback_model_signal(
 
 
 def _build_legacy_feedback(assignment: AssignmentLike, relevance: RelevanceResult, llm_reason: str) -> str:
-    missing = "、".join(relevance.missing_focus_terms[:4]) or "题目核心知识点"
-    matched = "、".join(relevance.matched_focus_terms[:3])
+    missing_terms = [t for t in relevance.missing_focus_terms if not _TITLE_NOISE_TOKEN_RE.fullmatch(t)]
+    matched_terms = [t for t in relevance.matched_focus_terms if not _TITLE_NOISE_TOKEN_RE.fullmatch(t)]
+    missing = "、".join(missing_terms[:4]) or "题目核心知识点"
+    matched = "、".join(matched_terms[:3])
     reason_text = f"判定依据：{llm_reason}。" if llm_reason else ""
     matched_text = f"已覆盖：{matched}。" if matched else ""
     return (
@@ -662,6 +676,7 @@ async def _resolve_ambiguous_with_llm(
 ) -> tuple[RelevanceLabel, str]:
     prompt = (
         "你是作业相关性判定器，请判断学生回答是否围绕题目。\n"
+        "注意：题目名称里如果包含 test1、作业1 等编号词，不能据此判偏题。\n"
         "仅输出JSON：{\"label\":\"relevant|off_topic\",\"reason\":\"一句话\"}\n"
         f"题目：{assignment.title}\n"
         f"描述：{assignment.description or '无'}\n"

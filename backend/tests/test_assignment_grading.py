@@ -43,6 +43,18 @@ class AssignmentFeedbackTests(unittest.IsolatedAsyncioTestCase):
         result = evaluate_relevance(assignment, content)
         self.assertEqual(result.label, "off_topic")
 
+    def test_title_index_tokens_should_not_be_focus_terms(self):
+        assignment = DummyAssignment(
+            title="数据结构test1，作业1",
+            description="数据结构有哪些？",
+            keywords=None,
+        )
+        content = "数据结构包括数组、链表、栈、队列、树和图。"
+        result = evaluate_relevance(assignment, content)
+        self.assertNotIn("test1", result.focus_terms)
+        self.assertNotIn("作业1", result.focus_terms)
+        self.assertNotEqual(result.label, "off_topic")
+
     def test_parse_llm_feedback_strips_score(self):
         raw = "评分: 85\n评语: 回答基本正确，但建议补充进程与线程区别。"
         cleaned = parse_llm_feedback(raw)
