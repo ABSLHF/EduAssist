@@ -20,11 +20,13 @@ from app.schemas.schemas import (
 )
 from app.services.classifier import predict_label
 from app.services.model_paths import (
+    resolve_active_assignment_feedback_model_path,
     resolve_active_assignment_relevance_model_path,
     resolve_active_qa_model_path,
 )
 from app.services.qa_small_model import predict_answer
 from training.train import train as run_training_local
+from training.train_assignment_feedback_hf import train as run_training_assignment_feedback_hf
 from training.train_assignment_relevance_hf import train as run_training_assignment_relevance_hf
 from training.train_cls_hf import train as run_training_cls_hf
 from training.train_qa_hf import train as run_training_qa_hf
@@ -51,6 +53,9 @@ class ActiveModelResponse(BaseModel):
     enable_assignment_relevance_model: bool = False
     assignment_relevance_threshold_hi: float = 0.7
     assignment_relevance_threshold_lo: float = 0.25
+    assignment_feedback_model_path: str | None = None
+    assignment_feedback_model_source: str = "none"
+    enable_assignment_feedback_model: bool = False
 
 
 def _timestamped_model_dir(prefix: str) -> str:
@@ -225,6 +230,22 @@ def _execute_training(payload: ModelTrainRequest) -> tuple[str, dict]:
         }
         return stage_b_path, merged_metrics
 
+    if task_type == "assignment_feedback_hf":
+        model_name = payload.model_name or "hfl/chinese-roberta-wwm-ext"
+        dataset_name = payload.dataset_name or "assignment_feedback_mix_local"
+        model_path = _timestamped_model_dir("assignment_feedback")
+        metrics = run_training_assignment_feedback_hf(
+            dataset_name=dataset_name,
+            dataset_config=payload.dataset_config,
+            model_name=model_name,
+            output_dir=model_path,
+            max_samples=payload.max_samples,
+            epochs=max(1, payload.epochs),
+            batch_size=max(4, payload.batch_size),
+            learning_rate=payload.learning_rate,
+        )
+        return model_path, metrics
+
     raise ValueError(f"Unsupported task_type: {task_type}")
 
 
@@ -311,6 +332,7 @@ def get_active_model(db: Session = Depends(get_db), user=Depends(get_current_use
     qa_model_path, qa_model_source = resolve_active_qa_model_path(db)
     latest_metrics = _latest_qa_run_metrics(db)
     assignment_model_path, assignment_model_source = resolve_active_assignment_relevance_model_path(db)
+    assignment_feedback_model_path, assignment_feedback_model_source = resolve_active_assignment_feedback_model_path(db)
     latest_assignment_metrics = _latest_assignment_relevance_metrics(db)
     manifest_hint = None
     dataset_name = str(latest_metrics.get("dataset", ""))
@@ -343,4 +365,7 @@ def get_active_model(db: Session = Depends(get_db), user=Depends(get_current_use
         "enable_assignment_relevance_model": settings.enable_assignment_relevance_model,
         "assignment_relevance_threshold_hi": assignment_threshold_hi,
         "assignment_relevance_threshold_lo": assignment_threshold_lo,
+        "assignment_feedback_model_path": assignment_feedback_model_path,
+        "assignment_feedback_model_source": assignment_feedback_model_source,
+        "enable_assignment_feedback_model": settings.enable_assignment_feedback_model,
     }

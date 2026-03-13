@@ -113,3 +113,42 @@ def resolve_active_assignment_relevance_model_path(db: Session | None) -> tuple[
         return fs_path, "models_dir_latest"
 
     return None, "none"
+
+
+def latest_assignment_feedback_model_dir_from_fs() -> str | None:
+    models_dir = BACKEND_ROOT / "models"
+    if not models_dir.exists():
+        return None
+
+    candidates: list[Path] = []
+    for child in models_dir.iterdir():
+        if not child.is_dir():
+            continue
+        if not child.name.startswith("assignment_feedback_"):
+            continue
+        if not (child / "config.json").exists():
+            continue
+        candidates.append(child)
+
+    if not candidates:
+        return None
+
+    latest = max(candidates, key=lambda p: p.stat().st_mtime)
+    return str(latest.resolve())
+
+
+def resolve_active_assignment_feedback_model_path(db: Session | None) -> tuple[str | None, str]:
+    env_path = _normalize_existing_path((settings.assignment_feedback_model_path or "").strip())
+    if env_path:
+        return env_path, "env"
+
+    if db is not None:
+        run_path = latest_model_run_path(db, "assignment_feedback_hf")
+        if run_path:
+            return run_path, "model_run_latest"
+
+    fs_path = latest_assignment_feedback_model_dir_from_fs()
+    if fs_path:
+        return fs_path, "models_dir_latest"
+
+    return None, "none"

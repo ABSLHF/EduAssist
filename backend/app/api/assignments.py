@@ -13,7 +13,7 @@ from app.schemas.schemas import (
     SubmissionCreate,
     SubmissionOut,
 )
-from app.services.assignment_grading import generate_text_assignment_feedback
+from app.services.assignment_feedback import generate_text_assignment_feedback
 
 router = APIRouter()
 

@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     assignment_relevance_use_reranker: bool = False
     assignment_relevance_reranker_model: str = "BAAI/bge-reranker-v2-m3"
     assignment_relevance_reranker_weight: float = 0.25
+    assignment_feedback_mode: str = "legacy"
+    assignment_feedback_shadow_log_path: str = "logs/assignment_feedback_shadow.jsonl"
+    enable_assignment_feedback_model: bool = False
+    assignment_feedback_model_path: str | None = None
     kg_extractor: str = "hybrid"
     kg_top_k: int = 12
     kg_min_term_len: int = 2
