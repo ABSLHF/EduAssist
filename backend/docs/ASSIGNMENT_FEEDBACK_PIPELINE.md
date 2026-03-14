@@ -71,3 +71,7 @@ pip install peft bitsandbytes
 - 对比“直接LLM评语”与“single_v2链路评语”
 - 输出误判率、越界建议率、时延和样例
 
+## 6. AutoDL 执行手册
+
+完整双终端步骤见：`backend/docs/ASSIGNMENT_FEEDBACK_SFT_AUTODL_RUNBOOK.md`
+
